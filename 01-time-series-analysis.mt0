@@ -1,0 +1,202 @@
+﻿/* Вариант #6 */
+_ = nil
+
+/* Входной временной ряд */
+y =   $(_
+	2.3
+	2.8
+	3.5
+	3.0
+	2.6
+	3.3
+	4.0
+	3.5
+	3.0
+	3.7
+	4.4
+	4.2
+	3.9
+	3.2
+	4.1
+	5.0
+	4.5
+	4.4
+	4.7
+	5.2
+	4.4
+	3.5
+	4.1
+	4.6
+	4.2
+	3.4
+	15.0
+	12.7
+	1.3
+	1.3
+       )
+
+y_prev = y
+
+/*
+ * Табличное значение критерия Ирвина для заданного количества степеней ряда
+ * 			(в этом случае n = 30)
+ */
+IRV_A = 1.2
+
+setw = func: str, width {
+	if (str.size() >= width) ?
+		return: str
+
+	pad = " ".repeat(width - str.size())
+	return: str :: pad
+}
+
+center = func: str, width {
+	pad = " ".repeat((width - str.size()) / 2)
+	return: pad :: str :: pad
+}
+
+sum = func: list -> $(res = 0, range(1, list.size()).for_each(@: i -> res += list[i]))[0]
+
+/* Расчет среднего уровня ряда: (1 / n) * Σ(yt) */
+mean = func: y {
+	result = sum(y) / #N
+	<% newl :: "Расчет среднего уровня ряда" :: newl
+		:: "y‾ = (1 / " :: #N :: ") * Σ" :: y.map(@: n -> n != nil ? n) :: " = " :: result :: newl
+	return: result
+}
+
+/* Расчет среднеквадратичного отклонения: √(Σ((yt - y‾)^2) / n) */
+qmean = func: y {
+	sq = y.map(#(yt) {
+		if (yt != nil) ?
+			return: pow(yt - #MEAN, 2)
+	})
+	result = sqrt(sum(sq) / #N)
+	<% newl :: "Расчет среднеквадратичного отклонения" :: newl
+		:: "σy = √(Σ" :: sq :: " / " :: #N :: ") = " :: result :: newl
+	return: result
+}
+
+/* Расчет вектора λ критерия Ирвина */
+calc_lambda = func: y, qmean {
+	<% newl :: "Расчет λ-статистик критерия Ирвина"
+	return: range(2, #N + 1).map(#(t, y => y, qmean => qmean) {
+		l = abs(y[t] - y[t - 1]) / qmean
+		%% "λ" :: t :: " = |" :: y[t] :: " - " :: y[t - 1] :: "| / " :: qmean :: " = " :: l
+			:: (t != #N ? ";    " : (newl :: newl))
+		%% ((t + 1) % 2 == 0 ? newl : "")
+		return: l
+	})
+}
+
+/*
+ * Проверка на аномальность по критерию Ирвина
+ *
+ * При этом используется дополнительный параметр E, который определяет
+ * 	минимальное изменение значения аномальной λ-статистики между итерациями
+ * 	прежде чем устранение аномалии будет считаться завершенным
+ *	(т.к. в некоторых случаях расчетное значение может "зависнуть" на значении табличного
+ *  	и уменьшаться шагами порядка 10^-7 за итерацию или меньше)
+ */
+ E = 0.000001
+ NEXT_CHECK = 0
+ IGNORE = defset $()
+check_lambda = func: lambda {
+	%% newl :: "Проверка на аномальность" :: newl
+	#ANOMAL_T_PREV = #ANOMAL_T
+	has_anomalies = false
+	unchanged = false
+	l_delta = nil
+	range(lambda.size()).for_each(#(t) {
+		if (!has_anomalies) ? {
+			has_anomalies = lambda[t] >= #IRV_A && !#IGNORE[t]
+			if ((t + 2) == #ANOMAL_T && #IT > 1 && #IT > #NEXT_CHECK) ? {
+				l_delta = abs(#lambda_prev[#ANOMAL_T] - #lambda[#ANOMAL_T])
+				y_delta = abs(#y_prev[#ANOMAL_T + 2] - #y[#ANOMAL_T + 2])
+				if (l_delta <= #E && y_delta <= #E && (lambda[t] - #IRV_A) <= #E) ? {
+					unchanged = true
+					#IGNORE[->t]
+				}
+			}
+			%% "λ" :: (t + 2) :: " = " :: lambda[t] :: (has_anomalies ? " >= " : " < ") :: "λα = " :: #IRV_A
+				:: (t != lambda.size() ? ";    " : (newl :: newl))
+			%% ((t + 1) % 2 == 0 ? newl : "")
+			if (has_anomalies) ? {#ANOMAL_T = t + 2}
+		}
+	})
+	if (unchanged) ? {
+		<% "! Аномальное λ" :: #ANOMAL_T :: " изменилось незначительно за последнюю итерацию ("
+				:: "Δλ" :: #ANOMAL_T :: " = " :: l_delta :: " <= " :: #E :: ")"
+	}
+	if (#ANOMAL_T != #ANOMAL_T_PREV) ? {
+		#NEXT_CHECK = #IT + 5
+		#IGNORE[~]
+	}
+	return: has_anomalies
+}
+
+/*
+ * Исправление аномального уровня ряда: y[t] = λα * σy + y[t-1],
+ * 	где для σy и y[t-1] берутся их значения с прошлой итерации.
+ */
+fix_anomaly = func: y, t {
+	y[t] = #IRV_A * #QMEAN_PREV + #y_prev[t - 1]
+	<% newl :: "* Исправление аномалии: y"
+		:: t :: " = " :: #IRV_A :: " * " :: #QMEAN_PREV :: " + " :: #y_prev[t - 1] :: " = " :: y[t] :: newl
+	#y_prev = y
+	return: y[t]
+}
+
+TW = 4; W = 9; MAXW = 2 * (TW + W) + W
+print_series = func: y {
+	global: W, TW
+	<% ("t".setw(TW) :: "Yt".setw(W) :: "".setw(W)).repeat(2)
+	range(1, 16).for_each(@: i -> <%	($$i).setw(TW) :: ($$y[i]).setw(W)
+						:: "".setw(W)
+						:: ($$(i + 15)).setw(TW) :: ($$y[i + 15]).setw(W))
+}
+
+/* Вывод характеристик ряда */
+print_characteristics = func @() {
+	<% (#IT != 0 ? ("Итерация #" :: #IT) : "Исходный временной ряд").center(#MAXW)
+	#y.print_series()
+	<% newl :: "Характеристики ряда"
+	#QMEAN_PREV = #QMEAN
+	#lambda_prev = #LAMBDA
+	<% "* y‾ = " :: (#MEAN = mean(#y))
+	<% "* σy = " :: (#QMEAN = qmean(#y))
+	<% "* λ = " :: (#LAMBDA = calc_lambda(#y, #QMEAN))
+}
+
+/* Уровни ряда */
+N = y.size() - 1
+
+/* Средний уровень ряда и и среднее квадратичное отклонение */
+MEAN = 0; QMEAN = 0
+
+/* λ вектор для метода Ирвина */
+LAMBDA = $()
+lambda_prev = $()
+
+/* Номер итерации устранения аномалий */
+IT = 0
+
+/* Текущий уровень t, являющийся аномальным */
+ANOMAL_T = 0
+ANOMAL_T_PREV = 0
+
+print_characteristics()
+#QMEAN_PREV = #QMEAN
+#lambda_prev = #LAMBDA
+
+delim = "-".repeat(120)
+
+while(check_lambda(LAMBDA)) {
+	++IT
+	fix_anomaly(y, ANOMAL_T)
+	<% delim :: newl
+	print_characteristics()
+}
+
+<% newl :: newl :: "Все аномалии устранены."
