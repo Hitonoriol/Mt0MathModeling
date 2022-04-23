@@ -1,0 +1,68 @@
+/* Координаты амортизаторов */
+x = $(_, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0)
+y = $(_, 1.0, 1.0, -2.0, -2.0, -3.0, -3.0, 4.0, 4.0)
+z = $(_, 1.0, -1.0, -4.0, 4.0, -3.0, 3.0, 4.0, -4.0)
+
+/* Известные нагрузки */
+p8 = 0.1
+
+msg = "Амортизаторы должны иметь симметричное расположение"
+msg assert: x[1] == x[2] && x[1] == x[3] && x[1] == x[4]
+msg assert: x[5] == x[6] && x[5] == x[7] && x[5] == x[8]
+msg assert: y[1] == y[2]
+msg assert: y[3] == y[4]
+msg assert: y[5] == y[6]
+msg assert: y[7] == y[8]
+msg assert: z[1] == -z[2]
+msg assert: z[3] == -z[4]
+msg assert: z[5] == -z[6]
+msg assert: z[7] == -z[8]
+
+show = func: x, y, z {
+	<% "Координаты амортизаторов:"
+	range(1, x.size())[do: @: i, x => x, y => y, z => z {
+		<% $"I{}: ({}, {}, {})" i, x[i], y[i], z[i]
+	}]
+}
+
+show(x, y, z)
+%% newl
+
+<% $"a = {}; b = {}; c = {}; d = {}; e = {};\nf = {}; g = {}; h = {}; k = {}; l = {};"
+	a = x[1],
+	b = -x[5],
+	c = z[1],
+	d = y[1],
+	e = -y[5],
+	f = y[7],
+	g = z[3],
+	h = z[5],
+	k = -y[3],
+	l = z[7]
+%% newl
+
+D = y[5] * (z[6] - z[7]) + y[6] * (z[7] - z[5]) + y[7] * (z[5] - z[6])
+<% $"D = {}\n" D
+
+A = a / (a + b)
+beta = A - p8
+gamma = -y[8] * p8
+theta = l * p8
+
+p5 = (1 / D) * (beta * y[6] * z[7] - beta * y[7] * z[6] + gamma * z[6] - gamma * z[7] - theta * y[6] + theta * y[7])
+p6 = (1 / D) * (-beta * y[5] * z[7] + beta * y[7] * z[5] - gamma * z[5] + gamma * z[7] + theta * y[5] - theta * y[7])
+p7 = (1 / D) * (beta * y[5] * z[6] - beta * y[6] * z[5] + gamma * z[5] - gamma * z[6] - theta * y[5] + theta * y[6])
+
+delta = -(y[5] * z[5] * p5 + y[6] * z[6] * p6 + y[7] * z[7] * p7 + y[8] * z[8] * p8)
+
+p1 = (a * c * k + delta) / (2 * c * (d + k))
+p2 = (a * c * k - delta) / (2 * c * (d + k))
+p3 = (a * d * g + delta) / (2 * g * (d + k))
+p4 = (a * d * g - delta) / (2 * g * (d + k))
+
+<% $"β = {}; γ = {}; θ = {};" beta, gamma, theta
+<% $"δ = {};\n" delta
+
+<% "Нагрузки:"
+<% $"p1 = {}; p2 = {}; p3 = {}; p4 = {};" p1, p2, p3, p4
+<% $"p5 = {}; p6 = {}; p7 = {}; p8 = {}" p5, p6, p7, p8
